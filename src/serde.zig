@@ -213,6 +213,7 @@ pub fn parseRequestValue(value: std.json.Value) ParseError!types.Request {
         .string => |actual| actual,
         else => return error.InvalidMethod,
     };
+    try validateMethodName(method);
 
     const params = if (object.get("params")) |params_value| blk: {
         switch (params_value) {
@@ -268,6 +269,7 @@ pub fn parseIdValue(value: std.json.Value) ParseError!types.Id {
     return switch (value) {
         .string => |actual| .{ .string = actual },
         .integer => |actual| .{ .number = actual },
+        .float => |actual| .{ .float = actual },
         .null => .null,
         else => error.InvalidId,
     };
@@ -275,8 +277,7 @@ pub fn parseIdValue(value: std.json.Value) ParseError!types.Id {
 
 pub fn validateRequest(request: types.Request) ParseError!void {
     if (!std.mem.eql(u8, request.jsonrpc, VERSION_STR)) return error.InvalidVersion;
-    if (request.method.len == 0) return error.InvalidRequest;
-    if (std.mem.startsWith(u8, request.method, "rpc.")) return error.InvalidMethod;
+    try validateMethodName(request.method);
 
     if (request.params) |params| {
         switch (params) {
@@ -295,6 +296,15 @@ pub fn validateResponse(response: types.Response) ParseError!void {
             if (!std.mem.eql(u8, failure.jsonrpc, VERSION_STR)) return error.InvalidVersion;
         },
     }
+}
+
+pub fn validateMethodName(method: []const u8) ParseError!void {
+    if (method.len == 0) return error.InvalidRequest;
+    if (isReservedMethod(method)) return error.InvalidMethod;
+}
+
+pub fn isReservedMethod(method: []const u8) bool {
+    return std.mem.startsWith(u8, method, "rpc.");
 }
 
 fn parseErrorObject(value: std.json.Value) ParseError!types.ErrorObject {
@@ -349,6 +359,7 @@ fn writeId(writer: anytype, id: types.Id) !void {
     switch (id) {
         .string => |actual| try writeString(writer, actual),
         .number => |actual| try writer.print("{d}", .{actual}),
+        .float => |actual| try writer.print("{d}", .{actual}),
         .null => try writer.writeAll("null"),
     }
 }

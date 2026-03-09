@@ -21,6 +21,10 @@ test "Id.eql compares identifiers" {
     try testing.expect(jsonrpc.Id.eql(.null, .null));
     // Mixed types
     try testing.expect(!jsonrpc.Id.eql(.{ .number = 1 }, .{ .string = "1" }));
+    // Equivalent JSON numbers
+    try testing.expect(jsonrpc.Id.eql(.{ .number = 1 }, .{ .float = 1.0 }));
+    // Non-equivalent JSON numbers
+    try testing.expect(!jsonrpc.Id.eql(.{ .number = 1 }, .{ .float = 1.5 }));
 }
 
 test "Request.isNotification detects notification" {

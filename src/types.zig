@@ -9,20 +9,52 @@ pub const VERSION = "2.0";
 pub const Id = union(enum) {
     string: []const u8,
     number: i64,
+    float: f64,
     null,
 
     pub fn eql(a: Id, b: Id) bool {
-        const a_tag = std.meta.activeTag(a);
-        const b_tag = std.meta.activeTag(b);
-        if (a_tag != b_tag) return false;
-
         return switch (a) {
-            .string => |value| std.mem.eql(u8, value, b.string),
-            .number => |value| value == b.number,
-            .null => true,
+            .string => |value| b == .string and std.mem.eql(u8, value, b.string),
+            .number => |value| switch (b) {
+                .number => |other| value == other,
+                .float => |other| intEqualsFloat(value, other),
+                else => false,
+            },
+            .float => |value| switch (b) {
+                .number => |other| intEqualsFloat(other, value),
+                .float => |other| value == other,
+                else => false,
+            },
+            .null => b == .null,
+        };
+    }
+
+    pub fn asExactInteger(self: Id) ?i64 {
+        return switch (self) {
+            .number => |value| value,
+            .float => |value| exactIntegerFromFloat(value),
+            else => null,
         };
     }
 };
+
+fn intEqualsFloat(int_value: i64, float_value: f64) bool {
+    const normalized = exactIntegerFromFloat(float_value) orelse return false;
+    return normalized == int_value;
+}
+
+fn exactIntegerFromFloat(value: f64) ?i64 {
+    if (!std.math.isFinite(value)) return null;
+    if (@trunc(value) != value) return null;
+
+    const min = @as(f64, @floatFromInt(std.math.minInt(i64)));
+    const max = @as(f64, @floatFromInt(std.math.maxInt(i64)));
+    if (value < min or value > max) return null;
+
+    const int_value: i64 = @intFromFloat(value);
+    if (@as(f64, @floatFromInt(int_value)) != value) return null;
+    return int_value;
+}
 
 /// Standard JSON-RPC error codes.
 pub const ErrorCode = enum(i64) {

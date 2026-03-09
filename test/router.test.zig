@@ -150,3 +150,31 @@ test "dispatch runs notification handler and returns null" {
     try testing.expect(State.called);
     try testing.expectEqualStrings("alex", State.last_name);
 }
+
+test "registerRequest rejects reserved rpc method prefix" {
+    const Handlers = struct {
+        fn ping(_: std.mem.Allocator, _: void) !void {}
+    };
+
+    var router = jsonrpc.Router.init(testing.allocator);
+    defer router.deinit();
+
+    try testing.expectError(
+        error.InvalidMethod,
+        router.registerRequest(void, void, "rpc.internal", Handlers.ping),
+    );
+}
+
+test "registerNotification rejects reserved rpc method prefix" {
+    const Handlers = struct {
+        fn ping(_: std.mem.Allocator, _: void) !void {}
+    };
+
+    var router = jsonrpc.Router.init(testing.allocator);
+    defer router.deinit();
+
+    try testing.expectError(
+        error.InvalidMethod,
+        router.registerNotification(void, "rpc.internal", Handlers.ping),
+    );
+}

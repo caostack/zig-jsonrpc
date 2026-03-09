@@ -414,7 +414,6 @@ fn validateBatchRequests(allocator: std.mem.Allocator, requests: []const types.R
     for (requests) |request| {
         try serde.validateRequest(request);
         const request_id = request.id orelse return error.InvalidRequest;
-        if (request_id == .null) return error.InvalidRequest;
         const key = try batchIdKey(allocator, request_id);
         defer allocator.free(key);
         if (ids.contains(key)) return error.DuplicateRequestId;
@@ -428,10 +427,7 @@ fn responseNumericId(response: types.Response) ?i64 {
         .err => |failure| failure.id,
     };
 
-    return switch (id) {
-        .number => |numeric| numeric,
-        else => null,
-    };
+    return id.asExactInteger();
 }
 
 fn containsRequestId(requests: []const types.Request, response_id: types.Id) bool {
@@ -484,9 +480,14 @@ pub fn deinitBatchResponses(allocator: std.mem.Allocator, responses: []BatchResp
 }
 
 fn batchIdKey(allocator: std.mem.Allocator, id: types.Id) ![]u8 {
+    if (id.asExactInteger()) |numeric| {
+        return std.fmt.allocPrint(allocator, "n:{d}", .{numeric});
+    }
+
     return switch (id) {
-        .number => |numeric| std.fmt.allocPrint(allocator, "n:{d}", .{numeric}),
+        .float => |numeric| std.fmt.allocPrint(allocator, "f:{d}", .{numeric}),
         .string => |string| std.fmt.allocPrint(allocator, "s:{s}", .{string}),
         .null => std.fmt.allocPrint(allocator, "null", .{}),
+        .number => unreachable,
     };
 }

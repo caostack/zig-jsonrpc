@@ -97,3 +97,21 @@ test "handleBytesAlloc invalid request uses parsed id when available" {
 
     try testing.expect(parsed.response.err.id.eql(.{ .number = 7 }));
 }
+
+test "handleBytesAlloc invalid request preserves float id when available" {
+    var router = jsonrpc.Router.init(testing.allocator);
+    defer router.deinit();
+
+    const encoded = (try jsonrpc.handleBytesAlloc(
+        testing.allocator,
+        &router,
+        "{\"jsonrpc\":\"2.0\",\"method\":\"jobs/get\",\"params\":1,\"id\":1.5}",
+    )).?;
+    defer testing.allocator.free(encoded);
+
+    var parsed = try jsonrpc.parseResponse(testing.allocator, encoded);
+    defer parsed.deinit();
+
+    try testing.expect(parsed.response == .err);
+    try testing.expect(parsed.response.err.id.eql(.{ .float = 1.5 }));
+}

@@ -18,6 +18,7 @@ Implemented:
 
 - JSON-RPC `2.0` version validation
 - Request, notification, success response, error response
+- `id` values as string, integer, float, and `null`
 - Standard error codes and custom server error codes
 - Batch request and batch response handling
 - Standard parse error / invalid request generation on raw server input
@@ -26,6 +27,7 @@ Implemented:
 Current design choice:
 
 - Params must be object or array when present. `params: null` is rejected by serializer and parser.
+- `AsyncClient` generates integer ids internally and matches responses against those integer ids.
 
 ## Module Overview
 

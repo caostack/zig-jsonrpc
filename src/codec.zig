@@ -15,7 +15,7 @@ pub fn decodeParams(comptime T: type, value: ?std.json.Value) DecodeError!T {
 
 /// Decode a JSON result value into a strongly typed Zig value.
 pub fn decodeResult(comptime T: type, value: std.json.Value) DecodeError!T {
-    return decodeValue(T, value);
+    return decodeMaybeValue(T, value);
 }
 
 /// Deep-clone a JSON value into memory owned by `allocator`.

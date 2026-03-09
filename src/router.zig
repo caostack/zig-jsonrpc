@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const codec = @import("codec.zig");
+const serde = @import("serde.zig");
 const types = @import("types.zig");
 
 pub const RequestHandler = *const fn (std.mem.Allocator, types.Request) types.Response;
@@ -34,6 +35,8 @@ pub const Router = struct {
         method: []const u8,
         comptime handler: fn (std.mem.Allocator, Params) anyerror!Result,
     ) !void {
+        try serde.validateMethodName(method);
+
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -73,6 +76,8 @@ pub const Router = struct {
         method: []const u8,
         comptime handler: fn (std.mem.Allocator, Params) anyerror!void,
     ) !void {
+        try serde.validateMethodName(method);
+
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -90,6 +95,16 @@ pub const Router = struct {
     }
 
     pub fn dispatch(self: *Self, allocator: std.mem.Allocator, request: types.Request) ?types.Response {
+        serde.validateMethodName(request.method) catch {
+            if (request.isNotification()) return null;
+            return types.Response.errorResponse(
+                request.id.?,
+                .invalid_request,
+                types.ErrorCode.invalid_request.message(),
+                null,
+            );
+        };
+
         if (request.isNotification()) {
             self.mutex.lock();
             const handler = self.notification_handlers.get(request.method);

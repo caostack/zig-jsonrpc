@@ -74,6 +74,25 @@ test "client call returns remote rpc error" {
     try testing.expectEqual(true, outcome.rpc_error.data.?.object.get("retry").?.bool);
 }
 
+test "client call decodes null result into void" {
+    var state = MockTransportState{
+        .allocator = testing.allocator,
+        .response_payload = "{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":1}",
+    };
+    defer state.deinit();
+
+    var client = jsonrpc.Client.init(.{
+        .context = &state,
+        .callFn = mockCall,
+        .notifyFn = mockNotify,
+    });
+
+    var outcome = try client.call(testing.allocator, void, void, "server/ping", {});
+    defer outcome.deinit(testing.allocator);
+
+    try testing.expect(outcome == .success);
+}
+
 test "client call rejects mismatched response id" {
     var state = MockTransportState{
         .allocator = testing.allocator,
@@ -91,6 +110,26 @@ test "client call rejects mismatched response id" {
         error.InvalidResponseId,
         client.call(testing.allocator, void, void, "server/ping", {}),
     );
+}
+
+test "client call accepts numerically equivalent response id" {
+    var state = MockTransportState{
+        .allocator = testing.allocator,
+        .response_payload = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":1.0}",
+    };
+    defer state.deinit();
+
+    var client = jsonrpc.Client.init(.{
+        .context = &state,
+        .callFn = mockCall,
+        .notifyFn = mockNotify,
+    });
+
+    var outcome = try client.call(testing.allocator, void, bool, "server/ping", {});
+    defer outcome.deinit(testing.allocator);
+
+    try testing.expect(outcome == .success);
+    try testing.expect(outcome.success);
 }
 
 test "client notify sends notification without id" {
@@ -151,6 +190,30 @@ test "client callBatch sends batch and clones responses" {
     try testing.expectEqualStrings("Busy", responses[1].response.err.err.message);
     try testing.expect(state.last_call_request != null);
     try testing.expect(std.mem.startsWith(u8, state.last_call_request.?, "["));
+}
+
+test "client callBatch accepts numerically equivalent response ids" {
+    var state = MockTransportState{
+        .allocator = testing.allocator,
+        .response_payload = "[{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":1.0}]",
+    };
+    defer state.deinit();
+
+    var client = jsonrpc.Client.init(.{
+        .context = &state,
+        .callFn = mockCall,
+        .notifyFn = mockNotify,
+    });
+
+    const requests = [_]jsonrpc.Request{
+        .{ .method = "ping", .id = .{ .number = 1 } },
+    };
+
+    const responses = try client.callBatch(testing.allocator, &requests);
+    defer jsonrpc.deinitBatchResponses(testing.allocator, responses);
+
+    try testing.expectEqual(@as(usize, 1), responses.len);
+    try testing.expect(responses[0].id.eql(.{ .float = 1.0 }));
 }
 
 test "client callBatch rejects unknown response id" {
@@ -216,6 +279,51 @@ test "client callBatch rejects duplicate numeric request ids" {
     const requests = [_]jsonrpc.Request{
         .{ .method = "a", .id = .{ .number = 1 } },
         .{ .method = "b", .id = .{ .number = 1 } },
+    };
+
+    try testing.expectError(error.DuplicateRequestId, client.callBatch(testing.allocator, &requests));
+}
+
+test "client callBatch accepts a single null id request" {
+    var state = MockTransportState{
+        .allocator = testing.allocator,
+        .response_payload = "[{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":null}]",
+    };
+    defer state.deinit();
+
+    var client = jsonrpc.Client.init(.{
+        .context = &state,
+        .callFn = mockCall,
+        .notifyFn = mockNotify,
+    });
+
+    const requests = [_]jsonrpc.Request{
+        .{ .method = "jobs/poll", .id = .null },
+    };
+
+    const responses = try client.callBatch(testing.allocator, &requests);
+    defer jsonrpc.deinitBatchResponses(testing.allocator, responses);
+
+    try testing.expectEqual(@as(usize, 1), responses.len);
+    try testing.expect(responses[0].id.eql(.null));
+}
+
+test "client callBatch rejects duplicate null request ids" {
+    var state = MockTransportState{
+        .allocator = testing.allocator,
+        .response_payload = "[]",
+    };
+    defer state.deinit();
+
+    var client = jsonrpc.Client.init(.{
+        .context = &state,
+        .callFn = mockCall,
+        .notifyFn = mockNotify,
+    });
+
+    const requests = [_]jsonrpc.Request{
+        .{ .method = "a", .id = .null },
+        .{ .method = "b", .id = .null },
     };
 
     try testing.expectError(error.DuplicateRequestId, client.callBatch(testing.allocator, &requests));
@@ -313,4 +421,25 @@ test "async client accepts batch responses and rejects duplicate ids" {
     defer testing.allocator.free(dup_payload);
 
     try testing.expectError(error.DuplicateResponseId, client.acceptResponseBytes(testing.allocator, dup_payload));
+}
+
+test "async client accepts numerically equivalent integer response ids" {
+    var client = jsonrpc.AsyncClient.init(testing.allocator);
+    defer client.deinit();
+
+    const started = try client.startCall(testing.allocator, void, "a", {}, .{});
+    defer testing.allocator.free(started.request_bytes);
+
+    const payload = try std.fmt.allocPrint(
+        testing.allocator,
+        "{{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":{d}.0}}",
+        .{started.id},
+    );
+    defer testing.allocator.free(payload);
+
+    try client.acceptResponseBytes(testing.allocator, payload);
+
+    var completion = client.takeCompletion(started.id).?;
+    defer completion.deinit(testing.allocator);
+    try testing.expect(completion == .response);
 }

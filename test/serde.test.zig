@@ -63,6 +63,27 @@ test "parseRequest parses notification and keeps params accessible" {
     try testing.expectEqualStrings("alex", parsed.request.params.?.object.get("name").?.string);
 }
 
+test "parseRequest rejects reserved rpc method prefix" {
+    try testing.expectError(
+        error.InvalidMethod,
+        jsonrpc.parseRequest(
+            testing.allocator,
+            "{\"jsonrpc\":\"2.0\",\"method\":\"rpc.internal\",\"id\":1}",
+        ),
+    );
+}
+
+test "parseRequest accepts float id values" {
+    var parsed = try jsonrpc.parseRequest(
+        testing.allocator,
+        "{\"jsonrpc\":\"2.0\",\"method\":\"jobs/get\",\"id\":1.5}",
+    );
+    defer parsed.deinit();
+
+    try testing.expect(parsed.request.id != null);
+    try testing.expect(parsed.request.id.?.eql(.{ .float = 1.5 }));
+}
+
 test "parseResponse parses success response" {
     var parsed = try jsonrpc.parseResponse(
         testing.allocator,
@@ -85,6 +106,17 @@ test "parseResponse parses custom error codes" {
     try testing.expect(parsed.response == .err);
     try testing.expectEqual(@as(i64, -32042), parsed.response.err.err.code);
     try testing.expect(parsed.response.err.id.eql(.null));
+}
+
+test "parseResponse accepts float id values" {
+    var parsed = try jsonrpc.parseResponse(
+        testing.allocator,
+        "{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":1.5}",
+    );
+    defer parsed.deinit();
+
+    try testing.expect(parsed.response == .success);
+    try testing.expect(parsed.response.success.id.eql(.{ .float = 1.5 }));
 }
 
 test "parseRequest rejects invalid params shape" {
